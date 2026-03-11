@@ -1,0 +1,248 @@
+---
+title: "Bigfoot Sightings Dashboard"
+author: "Soo-Min Kim, Ibrahim Osman, Tien Tang"
+date: today
+format:
+  dashboard:
+    theme: cosmo
+    embed-resources: true
+---
+
+# Overview
+
+## Project Overview
+
+Bigfoot is a legendary creature that has reportedly been seen across North America for decades. Hundreds to thousands of sightings have been documented, especially in forested regions of the United States. While many people view Bigfoot as a mythical creature that only exists in folklore, the patterns of sightings can still provide interesting insights into human reporting behavior, regional culture, and geographic patterns.
+
+According to the Bigfoot Field Researchers Organization, sightings have been reported in nearly every U.S. state, though they appear much more frequently in certain areas such as the Pacific Northwest. These sightings raise many questions about whether reports are connected to population density, environmental factors, or cultural influence. More information about these reports can be found on the BFRO database: <https://www.bfro.net/GDB/>.
+
+This project explores three major questions:
+
+**Is there a relationship between Bigfoot sightings and the population density of a county?**
+
+**Do certain regions of the United States report more sightings than others, such as the East Coast versus the West Coast?**
+
+**Are sightings concentrated in areas with certain geographic or population characteristics?**
+
+To try to answer these questions we combined two datasets: the Census Bureau population data portal (<https://data.census.gov/>) which provides county-level population estimates, and the BFRO sightings database (<https://www.bfro.net/GDB/>) which records reported sightings across the United States.
+
+By merging these datasets, we can compare the number of sightings in an area with the population of that area and examine regional patterns across the country.
+
+This analysis is interesting because it explores how human perception, culture, and geography influence reported events. Even if Bigfoot itself remains unproven, the dataset reveals patterns about how people report unusual experiences and how folklore spreads across regions.
+
+However, our analysis has limitations. The U.S. Census population data is an estimate rather than an exact count, and the BFRO dataset relies on voluntary self-reported sightings. Because of these limitations, our results should be interpreted cautiously and focus on patterns in reporting behavior rather than claims about the existence of Bigfoot.
+
+## Bigfoot in the Pacific Northwest
+
+![](https://assets.simpleviewinc.com/simpleview/image/upload/c_limit,q_80,w_1200/v1/crm/eurekaca/patterson.gimlin0-b5b6c02e5056a36_b5b6c19f-5056-a36a-096e6e95925c7427.jpg)
+
+------------------------------------------------------------------------
+
+# Data Context
+
+## Bigfoot Sightings Dataset
+
+Source: Bigfoot Field Researchers Organization (BFRO)\
+<https://www.bfro.net/GDB/>
+
+The Bigfoot sightings dataset was compiled by the BFRO, an organization dedicated to documenting reports of Bigfoot sightings across the United States and other regions. Individuals submit reports describing encounters, which are reviewed by BFRO investigators before being added to the public database.
+
+The dataset includes thousands of sightings spanning from approximately 1970 to the present. Each record typically includes the location, county, state, and description of the reported encounter.
+
+One strength of this dataset is its large geographic coverage. However, a limitation is that sightings are self-reported and may reflect cultural interest or reporting behavior rather than confirmed biological evidence.
+
+## U.S. Census Population Dataset
+
+Source: U.S. Census Bureau Population Estimates Program\
+<https://data.census.gov/>
+
+The county population dataset was produced by the U.S. Census Bureau using a combination of census counts, birth and death records, migration data, and statistical modeling.
+
+It contains population estimates for every county in the United States. These estimates are widely used in research and policy planning because the Census Bureau is considered a reliable source of demographic data.
+
+The primary limitation is that population estimates between census years are approximations rather than exact counts. Despite this, the dataset provides a strong basis for comparing population distribution with Bigfoot sightings.
+
+------------------------------------------------------------------------
+
+# Data Preparation
+
+## Loading Libraries and Joining Data
+
+```{r}
+library(dplyr)
+library(maps)
+library(ggplot2)
+library(scales)
+library(plotly)
+
+bigfoot_df <- read.csv("bfro_all_states_county_totals.csv")
+census_df <- read.csv("co-est2023-alldata.csv")
+
+state_lookup <- data.frame(
+  state_name = state.name,
+  state_abbr = state.abb
+)
+
+bigfoot_df <- bigfoot_df |>
+  left_join(state_lookup, by = c("state" = "state_abbr"))
+
+census_df <- census_df |>
+  mutate(state_name = STNAME)
+
+census_state <- census_df |>
+  group_by(state_name) |>
+  summarize(
+    population = sum(POPESTIMATE2023, na.rm = TRUE)
+  )
+
+join_df <- left_join(bigfoot_df, census_state, by = "state_name")
+
+join_df <- join_df |>
+  filter(!is.na(listings))
+
+join_df <- join_df |>
+  select(-any_of(c("Last.Posted", "state_name")))
+
+print(join_df)
+```
+## Row
+Tools Used:
+
+Basic Tools:
+
+mutate() – to create new variables such as region and population indicators
+
+filter() – to select only county-level population data
+
+summarize() – to calculate total sightings by region
+
+group_by() – to organize data for regional summaries
+
+left_join() – to merge the population dataset with the Bigfoot sightings dataset
+
+Intermediate Tool:
+
+The case_when() function was used to group states into US regions. This transformation was necessary to compare sightings across broader geographic areas. Without this function, we would need to manually create a separate lookup table for region classification. The case_when() function was learned through the google, which demonstrated how it can replace multiple nested if-else statements when transforming variables.
+
+# Question 1: Population vs Sightings
+
+## Row {height="70%"}
+
+### Data Transformation
+
+```{r}
+sightings_state <- join_df |>
+  group_by(state, population) |>
+  summarize(
+    total_sightings = sum(listings),
+    .groups = "drop"
+  )
+```
+
+Is there a relationship between Bigfoot sightings and the population density of a county?
+
+Visualization:
+
+```{r}
+p <- ggplot(sightings_state, aes(x = population, y = total_sightings)) +
+  geom_point(color = "darkgreen", size = 3, alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  scale_x_continuous(labels = comma) +
+  labs(
+    title = "Bigfoot Sightings vs State Population",
+    x = "State Population (2023)",
+    y = "Total Bigfoot Sightings"
+  ) +
+  theme_minimal()
+
+ggplotly(p)
+```
+
+## Row {height="30%"}
+
+Interpretation
+
+This scatterplot examines whether states with larger populations report more Bigfoot sightings. If sightings increase with population, this may simply reflect that more people are present who could potentially report unusual experiences. If sightings were more common in rural areas, we might expect to see more points clustered among states with smaller populations.
+
+
+# Question 2: Regional Sightings
+
+Do certain regions of the United States report more sightings than others, such as the East Coast versus the West Coast?
+
+
+```{r}
+region_df <- join_df |>
+  mutate(region = case_when(
+    state %in% c("WA","OR","CA","NV","ID","MT","WY","UT","AZ","NM","CO") ~ "West",
+    TRUE ~ "East / Central"
+  )) |>
+  group_by(region) |>
+  summarize(
+    total_sightings = sum(listings),
+    .groups = "drop"
+  )
+```
+
+
+Visualization:
+
+```{r}
+ggplot(region_df, aes(x = region, y = total_sightings, fill = region)) +
+  geom_col() +
+  labs(
+    title = "Bigfoot Sightings: East vs West United States",
+    x = "Region",
+    y = "Total Sightings",
+    fill = "Region"
+  ) +
+  theme_minimal()
+```
+
+## Row
+
+Interpretation
+
+This bar chart compares the number of sightings reported in western states versus eastern and central states. If the western region reports significantly more sightings, it may support the idea that sightings are more common in areas with large wilderness regions such as the Pacific Northwest.
+
+# Question 3: Population Characteristics
+
+Are sightings concentrated in areas with certain geographic or population characteristics?
+```{r}
+pop_characteristics <- join_df |>
+  mutate(has_sighting = listings > 0)
+```
+
+
+Visualization:
+```{r}
+ggplot(pop_characteristics, aes(x = has_sighting, y = population, fill = has_sighting)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Population Distribution of Counties With vs Without Bigfoot Sightings",
+    x = "County Has Bigfoot Sightings",
+    y = "County Population",
+    fill = "Sightings Present"
+  ) +
+  theme_minimal()
+```
+Interpretation:
+This boxplot compares the population distribution between counties that have reported Bigfoot sightings and counties that have not. If sightings occur more frequently in rural areas, we would expect counties with sightings to generally have lower population levels. If the distributions appear similar, it may suggest that sightings occur across a wide range of population densities.
+
+# Conclusion
+Conclusion
+Key Takeaways
+
+One major takeaway from this analysis is that population size appears to influence the number of reported sightings. States with larger populations tend to report more sightings simply because more people are present to potentially observe unusual events.
+
+Another important finding is that sightings appear to be concentrated in western states, particularly regions associated with dense forests and wilderness areas. This supports the cultural association between Bigfoot and the Pacific Northwest.
+
+Finally, sightings occur across a wide range of population levels. This suggests sightings are not limited strictly to rural areas but may be influenced by both geographic and cultural factors.
+
+Limitations
+
+The BFRO dataset relies on voluntary self-reported sightings, which introduces potential reporting bias. Some areas may report more sightings due to greater cultural interest or tourism. Additionally, Census population figures are estimates rather than exact counts.
+
+Future Directions
+
+Future research could expand this analysis by incorporating environmental data such as forest coverage, elevation, or proximity to national parks. Examining sightings over time could also help determine whether media attention or cultural trends influence reporting patterns.
